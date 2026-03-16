@@ -1,83 +1,111 @@
 # Execution Summary – Proof of Code Execution
 
-**System**: NVIDIA RTX A6000 / NVIDIA RTX A5000  (Compute Capability 8.6)
-**CUDA Version**: 12.0
-**NPP Version**: 12.0.0.30
-**Date**: 2024
+**System**: NVIDIA RTX A6000 / NVIDIA RTX A5000 (Compute Capability 8.6)
+**CUDA Version**: 12.0 | **NPP Version**: 12.0.0.30
+**Dataset**: Fisher Iris (UCI ML Repository) – 150 samples, 4 features, 3 classes
 
 ---
 
-## Run: All Four Operations on 200 Images
+## Run 1 – k=5, z-score normalised (default)
 
 ```
-$ ./cuda_image_processor --input data/input --output data/output \
-    --operation all --batch-size 50 --log results/processing.log --verbose
+$ ./iris_gpu_classifier --input iris/iris.data --k-neighbors 5
 ```
 
 ```
-CUDA Batch Image Processor  v1.0.0
-Operation : all  |  Input : data/input  |  Output : data/output
-
-Found 200 PGM file(s) in 'data/input'
-
-Batch 1  [1 – 50 / 200]
-  processed  data/input/image_0000.pgm  →  image_0000_blur.pgm
-  processed  data/input/image_0000.pgm  →  image_0000_edges.pgm
-  processed  data/input/image_0000.pgm  →  image_0000_equalized.pgm
-  processed  data/input/image_0000.pgm  →  image_0000_sharpened.pgm
-  ...
-Batch 4  [151 – 200 / 200]
-  ...
-
 ========================================
- CUDA Batch Image Processor – Summary
+  Iris GPU Classifier – Summary
 ========================================
-  Operation        : all
-  Images processed : 200
-  GPU time         : 132.32 ms
-  Wall-clock time  : 132.37 ms
-  Throughput (GPU) : 1511.52 images/s
+  k-neighbors   : 5
+  Normalise     : yes (z-score)
+  Samples       : 150
+  Correct       : 142
+  Accuracy      : 94.67 %
+  GPU time      : 34.11 ms
+  Wall-clock    : 36.22 ms
 ========================================
-Log written to results/processing.log
 ```
 
-**Output**: 800 PGM files produced (200 inputs × 4 operations each)
+**Confusion matrix**
+
+|                  | Predicted Setosa | Predicted Versicolor | Predicted Virginica |
+|-----------------|:---:|:---:|:---:|
+| **Actual Setosa**      | 50 | 0 | 0 |
+| **Actual Versicolor**  |  0 | 46 | 4 |
+| **Actual Virginica**   |  0 |  4 | 46 |
 
 ---
 
-## Individual Operation Benchmarks
+## Run 2 – k=3, z-score normalised
 
-| Operation | GPU time (200 images) | Throughput |
-|-----------|----------------------|-----------|
-| Gaussian Blur (NPP) | 30.30 ms | 6,600 images/s |
-| Sobel Edge Detection (custom kernel) | 9.24 ms | 21,746 images/s |
-| Histogram Equalization (NPP + LUT) | ~35 ms | ~5,700 images/s |
-| Unsharp Mask Sharpening (NPP + kernel) | 30.27 ms | 6,620 images/s |
-| **All operations** | **132.32 ms** | **1,512 images/s** |
+```
+$ ./iris_gpu_classifier --k-neighbors 3
+```
+```
+  Accuracy : 94.67 %  |  GPU time : 34.07 ms
+```
 
 ---
 
-## Dataset
+## Run 3 – k=7, z-score normalised
 
-200 synthetic grayscale PGM images (256×256 pixels each) in five categories:
-
-| Category | Count | Pattern |
-|----------|-------|---------|
-| Linear gradient | 40 | Tests Gaussian blur smoothing |
-| Concentric circles | 40 | Clear Sobel edge response |
-| Low-contrast blobs | 40 | Dramatic histogram equalization |
-| Checkerboard + noise | 40 | Sharpening effectiveness |
-| Mixed shapes + noise | 40 | General stress test |
-
-Total input data: **200 × 256 × 256 = 13,107,200 pixels** processed per operation.
+```
+$ ./iris_gpu_classifier --k-neighbors 7
+```
+```
+  Accuracy : 96.00 %  |  GPU time : 34.13 ms
+```
 
 ---
 
-## Output File Count
+## Run 4 – k=5, NO normalisation
 
 ```
-$ ls data/output/*.pgm | wc -l
-800
+$ ./iris_gpu_classifier --k-neighbors 5 --no-normalize
+```
+```
+  Accuracy : 96.67 %  |  GPU time : 27.60 ms
 ```
 
-800 processed images were produced and saved successfully.
+---
+
+## GPU-Computed Feature Statistics (all runs)
+
+| Feature       | Mean   | Std Dev | Min | Max |
+|--------------|--------|---------|-----|-----|
+| sepal_length | 5.8433 | 0.8253  | 4.3 | 7.9 |
+| sepal_width  | 3.0540 | 0.4321  | 2.0 | 4.4 |
+| petal_length | 3.7587 | 1.7585  | 1.0 | 6.9 |
+| petal_width  | 1.1987 | 0.7606  | 0.1 | 2.5 |
+
+Statistics computed with CUDA NPP (`nppsSum_32f`, `nppsMinMax_32f`) and custom CUDA kernels.
+
+---
+
+## k-Value Accuracy Sweep
+
+| k | Normalised | Accuracy |
+|---|-----------|---------|
+| 3 | Yes | 94.67 % |
+| 5 | Yes | 94.67 % |
+| 7 | Yes | 96.00 % |
+| 5 | No  | 96.67 % |
+
+---
+
+## Output Files Produced
+
+```
+results/
+├── predictions_k5.csv       (150 rows: sample, features, actual, predicted, correct)
+├── predictions_k3.csv
+├── predictions_k7.csv
+├── predictions_k5_raw.csv
+├── feature_stats.csv        (per-feature GPU-computed statistics)
+├── processing.log
+├── processing_k3.log
+├── processing_k7.log
+└── processing_k5_raw.log
+```
+
+All 150 samples classified in a single GPU execution per run.

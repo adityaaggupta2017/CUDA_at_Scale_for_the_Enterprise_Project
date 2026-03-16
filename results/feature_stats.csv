@@ -1,0 +1,5 @@
+feature,mean,std_dev,min,max
+sepal_length,5.84333,0.825301,4.3,7.9
+sepal_width,3.054,0.432147,2,4.4
+petal_length,3.75867,1.75853,1,6.9
+petal_width,1.19867,0.760613,0.1,2.5

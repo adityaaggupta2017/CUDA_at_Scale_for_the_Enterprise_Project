@@ -1,7 +1,7 @@
 === Iris GPU Classifier  v1.0.0 ===
 
 Input dataset   : iris/iris.data
-k-neighbors     : 5
+k-neighbors     : 7
 Normalise       : yes
 
 --- Feature statistics ---
@@ -13,7 +13,7 @@ petal_width         1.1987    0.7606    0.1000    2.5000
 
 --- Results ---
 Samples    : 150
-Correct    : 142
-Accuracy   : 94.67 %
-GPU time   : 34.11 ms
-Wall-clock : 36.38 ms
+Correct    : 144
+Accuracy   : 96.00 %
+GPU time   : 34.13 ms
+Wall-clock : 36.41 ms
