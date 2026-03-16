@@ -1,43 +1,35 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run.sh  –  End-to-end build and run script
+# run.sh  –  End-to-end build and run for the Iris GPU Classifier
 # CUDA at Scale for the Enterprise – Independent Project
 # =============================================================================
 # This script:
-#   1. Checks that a CUDA-capable GPU is present
-#   2. Generates 200 synthetic test PGM images (if the input dir is empty)
-#   3. Builds the CUDA binary with make
-#   4. Runs all four processing operations on the full image set
-#   5. Prints a summary and saves the log to results/processing.log
+#   1. Verifies that a CUDA-capable GPU is present
+#   2. Builds the CUDA binary with make
+#   3. Runs the classifier with k=5 (default) on the Iris dataset
+#   4. Re-runs with k=3 and k=7 to sweep k values
+#   5. Runs once without feature normalisation for comparison
+#   6. Prints a final summary
 # =============================================================================
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
-# Configuration – override with environment variables if desired.
-# ---------------------------------------------------------------------------
 CUDA_PATH="${CUDA_PATH:-/usr/local/cuda}"
 ARCH="${ARCH:-sm_86}"
-INPUT_DIR="data/input"
-OUTPUT_DIR="data/output"
-LOG_FILE="results/processing.log"
-BINARY="./cuda_image_processor"
-NUM_IMAGES=200
+BINARY="./iris_gpu_classifier"
+DATASET="iris/iris.data"
 
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-RESET='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
+BOLD='\033[1m';   RESET='\033[0m'
 
 info()    { echo -e "${CYAN}[INFO]${RESET} $*"; }
 success() { echo -e "${GREEN}[OK]${RESET}   $*"; }
 error()   { echo -e "${RED}[ERR]${RESET}  $*" >&2; exit 1; }
 
 echo -e "${BOLD}============================================${RESET}"
-echo -e "${BOLD}  CUDA Batch Image Processor – run.sh       ${RESET}"
+echo -e "${BOLD}  Iris GPU Classifier – run.sh              ${RESET}"
 echo -e "${BOLD}============================================${RESET}"
 echo ""
 
@@ -55,20 +47,14 @@ success "GPU check passed."
 echo ""
 
 # ---------------------------------------------------------------------------
-# 2. Generate synthetic test data if the input directory is empty
+# 2. Dataset check
 # ---------------------------------------------------------------------------
-info "Checking test data in '${INPUT_DIR}' …"
-pgm_count=$(find "${INPUT_DIR}" -name '*.pgm' 2>/dev/null | wc -l)
-if [ "${pgm_count}" -lt "${NUM_IMAGES}" ]; then
-  info "Found ${pgm_count} images – generating ${NUM_IMAGES} synthetic images …"
-  mkdir -p "${INPUT_DIR}"
-  python3 scripts/generate_test_data.py \
-      --output "${INPUT_DIR}" \
-      --count  "${NUM_IMAGES}"
-  success "Test data ready."
-else
-  success "Found ${pgm_count} PGM images – skipping generation."
+info "Checking dataset '${DATASET}' …"
+if [ ! -f "${DATASET}" ]; then
+  error "Dataset not found at '${DATASET}'. Ensure the iris/ directory is present."
 fi
+num_samples=$(grep -cE "Iris-" "${DATASET}" || true)
+success "Dataset ready: ${num_samples} samples in '${DATASET}'."
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -78,36 +64,60 @@ info "Building with CUDA_PATH=${CUDA_PATH}  ARCH=${ARCH} …"
 make --jobs=4 CUDA_PATH="${CUDA_PATH}" ARCH="${ARCH}" all
 success "Build complete."
 echo ""
-
-# ---------------------------------------------------------------------------
-# 4. Create output directory
-# ---------------------------------------------------------------------------
-mkdir -p "${OUTPUT_DIR}"
 mkdir -p results
 
 # ---------------------------------------------------------------------------
-# 5. Run – all four operations on the full image set
+# 4. Run: k=5, normalised (default)
 # ---------------------------------------------------------------------------
-info "Running: all operations on ${pgm_count:-${NUM_IMAGES}} images …"
-echo ""
-
-time "${BINARY}"            \
-    --input   "${INPUT_DIR}" \
-    --output  "${OUTPUT_DIR}"\
-    --operation all          \
-    --batch-size 50          \
-    --log "${LOG_FILE}"      \
-    --verbose
-
-echo ""
-success "Processing complete."
+echo -e "${BOLD}--- Run 1: k=5, z-score normalised (default) ---${RESET}"
+"${BINARY}"                          \
+    --input       "${DATASET}"       \
+    --k-neighbors 5                  \
+    --predictions results/predictions_k5.csv    \
+    --stats       results/feature_stats.csv     \
+    --log         results/processing.log
 echo ""
 
 # ---------------------------------------------------------------------------
-# 6. Summary of output files
+# 5. Run: k=3
 # ---------------------------------------------------------------------------
-out_count=$(find "${OUTPUT_DIR}" -name '*.pgm' 2>/dev/null | wc -l)
-info "Output images saved in '${OUTPUT_DIR}': ${out_count} files"
-info "Processing log: ${LOG_FILE}"
+echo -e "${BOLD}--- Run 2: k=3, z-score normalised ---${RESET}"
+"${BINARY}"                          \
+    --input       "${DATASET}"       \
+    --k-neighbors 3                  \
+    --predictions results/predictions_k3.csv    \
+    --log         results/processing_k3.log
 echo ""
-echo -e "${BOLD}Done.${RESET}  Commit the 'results/' and 'data/output/' directories as proof of execution."
+
+# ---------------------------------------------------------------------------
+# 6. Run: k=7
+# ---------------------------------------------------------------------------
+echo -e "${BOLD}--- Run 3: k=7, z-score normalised ---${RESET}"
+"${BINARY}"                          \
+    --input       "${DATASET}"       \
+    --k-neighbors 7                  \
+    --predictions results/predictions_k7.csv    \
+    --log         results/processing_k7.log
+echo ""
+
+# ---------------------------------------------------------------------------
+# 7. Run: k=5, NO normalisation
+# ---------------------------------------------------------------------------
+echo -e "${BOLD}--- Run 4: k=5, NO normalisation ---${RESET}"
+"${BINARY}"                          \
+    --input         "${DATASET}"     \
+    --k-neighbors   5                \
+    --no-normalize                   \
+    --predictions results/predictions_k5_raw.csv  \
+    --log         results/processing_k5_raw.log
+echo ""
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+success "All runs complete."
+echo ""
+echo -e "${BOLD}Output files:${RESET}"
+ls -lh results/*.csv results/*.log 2>/dev/null | awk '{print "  " $0}'
+echo ""
+echo -e "${BOLD}Done.${RESET}  Commit the 'results/' directory as proof of execution."

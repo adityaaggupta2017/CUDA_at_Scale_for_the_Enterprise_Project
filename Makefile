@@ -1,63 +1,62 @@
 # =============================================================================
-# Makefile  –  CUDA Batch Image Processor
+# Makefile  –  Iris GPU Classifier
 # CUDA at Scale for the Enterprise – Independent Project
 # =============================================================================
 #
 # Targets
 #   make            – build the binary (default: "all")
-#   make run        – generate test data, build, and run with default settings
-#   make generate   – generate synthetic test images via Python
+#   make run        – build and run with default settings
 #   make clean      – remove build artefacts
-#   make help       – print this message
+#   make help       – print available targets
 #
-# Variables you may override on the command line:
-#   CUDA_PATH   – path to CUDA toolkit  (default: /usr/local/cuda)
-#   ARCH        – GPU compute capability (default: sm_86)
-#   JOBS        – parallel make jobs    (default: 4)
+# Override variables on the command line, e.g.:
+#   make ARCH=sm_75
+#   make CUDA_PATH=/opt/cuda-12
 # =============================================================================
 
-CUDA_PATH   ?= /usr/local/cuda
-ARCH        ?= sm_86
-JOBS        ?= 4
+CUDA_PATH ?= /usr/local/cuda
+ARCH      ?= sm_86
+JOBS      ?= 4
 
-NVCC        := $(CUDA_PATH)/bin/nvcc
-CXX         := g++
+NVCC := $(CUDA_PATH)/bin/nvcc
+CXX  := g++
 
 # ---------------------------------------------------------------------------
 # Compiler / linker flags
 # ---------------------------------------------------------------------------
-NVCC_FLAGS  := -std=c++17 -O2 -arch=$(ARCH)                  \
-               -Xcompiler "-Wall -Wextra -Wpedantic"          \
-               --compiler-options -fPIC
+NVCC_FLAGS := -std=c++17 -O2 -arch=$(ARCH)                   \
+              -Xcompiler "-Wall -Wextra"                       \
+              --compiler-options -fPIC
 
-CXX_FLAGS   := -std=c++17 -O2 -Wall -Wextra -Wpedantic
+CXX_FLAGS  := -std=c++17 -O2 -Wall -Wextra
 
-INCLUDES    := -I$(CUDA_PATH)/include -Isrc
+INCLUDES   := -I$(CUDA_PATH)/include -Isrc
 
-LIBS        := -L$(CUDA_PATH)/lib64                           \
-               -lnppc                                          \
-               -lnppif                                         \
-               -lnppist                                        \
-               -lnppicc                                        \
-               -lcudart                                        \
-               -lm
+# NPP libraries used:
+#   libnppc   – NPP core types
+#   libnpps   – NPP signal processing (nppsSum, nppsMinMax, nppsNormalize)
+LIBS := -L$(CUDA_PATH)/lib64 \
+        -lnppc               \
+        -lnpps               \
+        -lcudart             \
+        -lm
 
 # ---------------------------------------------------------------------------
 # Sources and objects
 # ---------------------------------------------------------------------------
-TARGET      := cuda_image_processor
+TARGET   := iris_gpu_classifier
 
-SRCS_CU     := src/image_processor.cu
-SRCS_CPP    := src/main.cpp src/pnm_utils.cpp
+SRCS_CU  := src/iris_processor.cu
+SRCS_CPP := src/main.cpp src/csv_utils.cpp
 
-OBJS_CU     := $(SRCS_CU:.cu=.o)
-OBJS_CPP    := $(SRCS_CPP:.cpp=.o)
-OBJS        := $(OBJS_CU) $(OBJS_CPP)
+OBJS_CU  := $(SRCS_CU:.cu=.o)
+OBJS_CPP := $(SRCS_CPP:.cpp=.o)
+OBJS     := $(OBJS_CU) $(OBJS_CPP)
 
 # ---------------------------------------------------------------------------
 # Phony targets
 # ---------------------------------------------------------------------------
-.PHONY: all run generate clean help
+.PHONY: all run clean help
 
 all: $(TARGET)
 
@@ -83,16 +82,9 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXX_FLAGS) $(INCLUDES) -c -o $@ $<
 
 # ---------------------------------------------------------------------------
-# Generate synthetic test data
+# One-command run
 # ---------------------------------------------------------------------------
-generate:
-	@echo "Generating synthetic test images …"
-	python3 scripts/generate_test_data.py --output data/input --count 200
-
-# ---------------------------------------------------------------------------
-# One-command end-to-end run
-# ---------------------------------------------------------------------------
-run: generate all
+run: all
 	@bash run.sh
 
 # ---------------------------------------------------------------------------
@@ -109,13 +101,11 @@ help:
 	@echo "Usage: make [TARGET] [VARIABLE=value ...]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all       – build the binary (default)"
-	@echo "  run       – generate data, build, and run"
-	@echo "  generate  – generate synthetic PGM test images"
-	@echo "  clean     – remove build artefacts"
-	@echo "  help      – print this message"
+	@echo "  all    – build the binary (default)"
+	@echo "  run    – build and run end-to-end"
+	@echo "  clean  – remove build artefacts"
+	@echo "  help   – print this message"
 	@echo ""
 	@echo "Variables:"
 	@echo "  CUDA_PATH=$(CUDA_PATH)"
 	@echo "  ARCH=$(ARCH)   (e.g. sm_75, sm_80, sm_86, sm_89)"
-	@echo "  JOBS=$(JOBS)"
